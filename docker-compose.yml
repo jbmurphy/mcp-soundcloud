@@ -1,0 +1,25 @@
+services:
+  mcp-soundcloud:
+    image: registry.local.jbmurphy.com/mcp-soundcloud:latest
+    container_name: mcp-soundcloud
+    ports:
+      - "3040:3040"
+    volumes:
+      - soundcloud_data:/data
+    environment:
+      - PORT=3040
+      - DATA_DIR=/data
+      - BASE_URL=https://mcp-soundcloud.local.jbmurphy.com
+      - HA_URL=https://nas01.local.jbmurphy.com:8123
+      - HA_TOKEN=${HA_TOKEN}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3040/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  soundcloud_data:
+    driver: local
