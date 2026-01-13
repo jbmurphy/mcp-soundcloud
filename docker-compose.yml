@@ -5,11 +5,13 @@ services:
     ports:
       - "3040:3040"
     volumes:
-      - soundcloud_data:/data
+      - /volume1/docker/mcp-soundcloud/data:/data
+      - /volume1/Music/soundcloud:/music
     environment:
       - PORT=3040
       - DATA_DIR=/data
-      - BASE_URL=https://mcp-soundcloud.local.jbmurphy.com
+      - MUSIC_DIR=/music
+      - BASE_URL=${BASE_URL}
       - HA_URL=https://nas01.local.jbmurphy.com:8123
       - HA_TOKEN=${HA_TOKEN}
     restart: unless-stopped
@@ -19,7 +21,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-
-volumes:
-  soundcloud_data:
-    driver: local

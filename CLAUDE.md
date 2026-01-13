@@ -47,12 +47,20 @@ SoundCloud → scdl (download) → Local Storage → Flask (serve) → Home Assi
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Server port | 3040 |
-| `DATA_DIR` | Directory for downloaded tracks | /data |
+| `DATA_DIR` | Directory for config (podcasts.json, archives) | /data |
+| `MUSIC_DIR` | Directory for audio files (clean for Plex) | /music |
 | `BASE_URL` | Public URL for serving audio (use IP for Chromecast) | http://192.168.11.14:3040 |
 | `HA_URL` | Home Assistant URL | https://nas01.local.jbmurphy.com:8123 |
 | `HA_TOKEN` | Home Assistant long-lived access token | (required) |
 
 **Note:** `BASE_URL` must use an IP address (not hostname) because Chromecasts hardcode Google DNS and cannot resolve local `.jbmurphy.com` domains.
+
+## Volume Mounts
+
+| Container Path | Host Path | Purpose |
+|----------------|-----------|---------|
+| `/data` | `/volume1/docker/mcp-soundcloud/data` | Config files (podcasts.json, archive files) |
+| `/music` | `/volume1/Music/soundcloud` | Audio files only (clean for Plex/media servers) |
 
 ## Building and Deploying
 
@@ -61,7 +69,10 @@ SoundCloud → scdl (download) → Local Storage → Flask (serve) → Home Assi
 ```bash
 cd mcp-soundcloud
 
-# Build for amd64 (nas01 architecture)
+# Use the build script
+./build.sh
+
+# Or manually:
 docker buildx build --platform linux/amd64 -t registry.local.jbmurphy.com/mcp-soundcloud:latest --push .
 ```
 
@@ -71,8 +82,15 @@ docker buildx build --platform linux/amd64 -t registry.local.jbmurphy.com/mcp-so
 # SSH to nas01 or use Portainer
 docker pull registry.local.jbmurphy.com/mcp-soundcloud:latest
 
-# Create .env file with HA_TOKEN
-echo "HA_TOKEN=your_home_assistant_token" > .env
+# Create .env file with required variables
+cat > .env << 'EOF'
+HA_TOKEN=your_home_assistant_token
+BASE_URL=http://192.168.11.14:3040
+EOF
+
+# Create directories
+mkdir -p /volume1/docker/mcp-soundcloud/data
+mkdir -p /volume1/Music/soundcloud
 
 # Start the container
 docker-compose up -d

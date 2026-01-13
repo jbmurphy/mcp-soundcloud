@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 # Configuration from environment
 PORT = int(os.environ.get('PORT', 3040))
 DATA_DIR = os.environ.get('DATA_DIR', '/data')
+MUSIC_DIR = os.environ.get('MUSIC_DIR', '/music')
 BASE_URL = os.environ.get('BASE_URL', 'https://mcp-soundcloud.local.jbmurphy.com')
 HA_URL = os.environ.get('HA_URL', 'https://homeassistant.local.jbmurphy.com:8123')
 HA_TOKEN = os.environ.get('HA_TOKEN', '')
@@ -46,12 +47,14 @@ mcp_server = Server("soundcloud-mcp-server")
 class SoundCloudManager:
     """Manages SoundCloud downloads and audio library"""
 
-    def __init__(self, data_dir: str, base_url: str):
-        self.data_dir = Path(data_dir)
+    def __init__(self, data_dir: str, music_dir: str, base_url: str):
+        self.data_dir = Path(data_dir)  # Config: subscriptions, archives
+        self.music_dir = Path(music_dir)  # Audio files only
         self.base_url = base_url.rstrip('/')
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.music_dir.mkdir(parents=True, exist_ok=True)
         self.subscriptions_file = self.data_dir / 'podcasts.json'
-        logger.info(f"SoundCloud manager initialized: data_dir={data_dir}, base_url={base_url}")
+        logger.info(f"SoundCloud manager initialized: data_dir={data_dir}, music_dir={music_dir}, base_url={base_url}")
 
     def load_subscriptions(self) -> dict[str, Any]:
         """Load subscriptions from podcasts.json"""
@@ -222,9 +225,9 @@ class SoundCloudManager:
                     artist_name = 'unknown'
 
             artist_name = self.clean_name(artist_name)
-            artist_dir = self.data_dir / artist_name
+            artist_dir = self.music_dir / artist_name  # Audio files go to music_dir
             artist_dir.mkdir(parents=True, exist_ok=True)
-            archive_file = artist_dir / f'{artist_name}_archive.txt'
+            archive_file = self.data_dir / f'{artist_name}_archive.txt'  # Archives stay in data_dir
 
             # Strip /tracks from URL since we use -t flag
             clean_url = url.rstrip('/').removesuffix('/tracks')
@@ -286,7 +289,7 @@ class SoundCloudManager:
         """List all downloaded artists"""
         try:
             artists = []
-            for artist_dir in self.data_dir.iterdir():
+            for artist_dir in self.music_dir.iterdir():
                 if artist_dir.is_dir():
                     tracks = list(artist_dir.glob('*.mp3')) + list(artist_dir.glob('*.m4a'))
                     if tracks:
@@ -308,7 +311,7 @@ class SoundCloudManager:
     def list_tracks(self, artist: str) -> dict[str, Any]:
         """List tracks for an artist"""
         try:
-            artist_dir = self.data_dir / self.clean_name(artist)
+            artist_dir = self.music_dir / self.clean_name(artist)
             if not artist_dir.exists():
                 return {"success": False, "error": f"Artist '{artist}' not found"}
 
@@ -336,7 +339,7 @@ class SoundCloudManager:
 
     def get_track_url(self, artist: str, track_filename: str) -> Optional[str]:
         """Get the full URL for a track"""
-        artist_dir = self.data_dir / self.clean_name(artist)
+        artist_dir = self.music_dir / self.clean_name(artist)
         track_path = artist_dir / track_filename
         if track_path.exists():
             encoded_filename = quote(track_filename)
@@ -349,7 +352,7 @@ class SoundCloudManager:
             query_lower = query.lower()
             results = []
 
-            for artist_dir in self.data_dir.iterdir():
+            for artist_dir in self.music_dir.iterdir():
                 if artist_dir.is_dir():
                     for track_path in list(artist_dir.glob('*.mp3')) + list(artist_dir.glob('*.m4a')):
                         if query_lower in track_path.stem.lower():
@@ -377,7 +380,7 @@ class SoundCloudManager:
         try:
             results = []
 
-            for artist_dir in self.data_dir.iterdir():
+            for artist_dir in self.music_dir.iterdir():
                 if artist_dir.is_dir():
                     tracks = list(artist_dir.glob('*.mp3')) + list(artist_dir.glob('*.m4a'))
                     if tracks:
@@ -480,7 +483,7 @@ class HomeAssistantPlayer:
 
 
 # Initialize managers
-sc_manager = SoundCloudManager(DATA_DIR, BASE_URL)
+sc_manager = SoundCloudManager(DATA_DIR, MUSIC_DIR, BASE_URL)
 ha_player = HomeAssistantPlayer(HA_URL, HA_TOKEN)
 
 
@@ -903,6 +906,7 @@ def health():
     return jsonify({
         "status": "healthy",
         "data_dir": DATA_DIR,
+        "music_dir": MUSIC_DIR,
         "base_url": BASE_URL
     }), 200
 
@@ -911,7 +915,7 @@ def health():
 def serve_audio(artist, filename):
     """Serve audio files"""
     try:
-        artist_dir = sc_manager.data_dir / sc_manager.clean_name(artist)
+        artist_dir = sc_manager.music_dir / sc_manager.clean_name(artist)
         if not artist_dir.exists():
             return jsonify({"error": "Artist not found"}), 404
 
@@ -1065,6 +1069,7 @@ if __name__ == '__main__':
     else:
         logger.info(f"Starting SoundCloud MCP HTTP server on port {PORT}")
         logger.info(f"Data directory: {DATA_DIR}")
+        logger.info(f"Music directory: {MUSIC_DIR}")
         logger.info(f"Base URL: {BASE_URL}")
         logger.info(f"Home Assistant: {HA_URL}")
         app.run(host='0.0.0.0', port=PORT, debug=False)
