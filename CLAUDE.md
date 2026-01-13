@@ -32,6 +32,7 @@ SoundCloud → scdl (download) → Local Storage → Flask (serve) → Home Assi
 | `add_subscription` | Add a SoundCloud artist/playlist to track |
 | `remove_subscription` | Remove a subscription |
 | `sync` | Download new tracks from all subscriptions |
+| `get_recent_downloads` | Get most recent downloads per artist, sorted by date |
 
 ## Endpoints
 
@@ -131,6 +132,15 @@ discover.call_tool('soundcloud_sync', limit=5)
 
 # Remove a subscription
 discover.call_tool('soundcloud_remove_subscription', name='aboveandbeyond')
+```
+
+### Recent Downloads:
+```python
+# Get most recent download for each artist (sorted by newest)
+discover.call_tool('soundcloud_get_recent_downloads')
+
+# Get last 3 downloads per artist
+discover.call_tool('soundcloud_get_recent_downloads', limit=3)
 ```
 
 ## Migrating Existing Data

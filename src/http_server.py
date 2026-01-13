@@ -372,6 +372,50 @@ class SoundCloudManager:
             logger.error(f"Error searching: {e}")
             return {"success": False, "error": str(e)}
 
+    def get_recent_downloads(self, limit: int = 1) -> dict[str, Any]:
+        """Get the most recent downloads for each artist"""
+        try:
+            results = []
+
+            for artist_dir in self.data_dir.iterdir():
+                if artist_dir.is_dir():
+                    tracks = list(artist_dir.glob('*.mp3')) + list(artist_dir.glob('*.m4a'))
+                    if tracks:
+                        # Sort by modification time, newest first
+                        tracks_with_mtime = [(t, t.stat().st_mtime) for t in tracks]
+                        tracks_with_mtime.sort(key=lambda x: x[1], reverse=True)
+
+                        # Get the N most recent tracks for this artist
+                        recent_tracks = []
+                        for track_path, mtime in tracks_with_mtime[:limit]:
+                            filename = track_path.name
+                            encoded_filename = quote(filename)
+                            recent_tracks.append({
+                                "title": track_path.stem,
+                                "filename": filename,
+                                "url": f"{self.base_url}/audio/{artist_dir.name}/{encoded_filename}",
+                                "size_mb": round(track_path.stat().st_size / (1024 * 1024), 2),
+                                "modified": datetime.fromtimestamp(mtime).isoformat()
+                            })
+
+                        results.append({
+                            "artist": artist_dir.name,
+                            "total_tracks": len(tracks),
+                            "recent_tracks": recent_tracks
+                        })
+
+            # Sort artists by their most recent track's modified date
+            results.sort(key=lambda x: x['recent_tracks'][0]['modified'] if x['recent_tracks'] else '', reverse=True)
+
+            return {
+                "success": True,
+                "artists": results,
+                "count": len(results)
+            }
+        except Exception as e:
+            logger.error(f"Error getting recent downloads: {e}")
+            return {"success": False, "error": str(e)}
+
 
 class HomeAssistantPlayer:
     """Plays audio on Chromecast via Home Assistant"""
@@ -607,6 +651,20 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": []
             }
+        ),
+        Tool(
+            name="get_recent_downloads",
+            description="Get the most recent downloads for each artist, sorted by date (newest first)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of recent tracks to show per artist (default: 1)"
+                    }
+                },
+                "required": []
+            }
         )
     ]
 
@@ -652,9 +710,13 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             result = sc_manager.list_tracks(artist)
 
             if result.get("success"):
-                response_text = f"✓ {result['count']} tracks for {result['artist']}:\n\n"
-                for track in result['tracks']:
-                    response_text += f"• {track['title']} ({track['size_mb']} MB)\n"
+                # Sort by modified date (newest first)
+                sorted_tracks = sorted(result['tracks'], key=lambda x: x.get('modified', ''), reverse=True)
+                response_text = f"✓ {result['count']} tracks for {result['artist']} (sorted by date, newest first):\n\n"
+                for track in sorted_tracks:
+                    # Format modified date nicely
+                    modified = track.get('modified', '')[:10] if track.get('modified') else 'Unknown'
+                    response_text += f"• [{modified}] {track['title']} ({track['size_mb']} MB)\n"
                     response_text += f"  URL: {track['url']}\n"
             else:
                 response_text = f"✗ Error: {result.get('error')}"
@@ -804,6 +866,22 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                     response_text += f"{status} {r['name']}: {r.get('track_count', 0)} tracks"
                     if r.get('error'):
                         response_text += f" (Error: {r['error']})"
+                    response_text += "\n"
+            else:
+                response_text = f"✗ Error: {result.get('error')}"
+
+        elif name == "get_recent_downloads":
+            limit = arguments.get("limit", 1)
+            result = sc_manager.get_recent_downloads(limit)
+
+            if result.get("success"):
+                response_text = f"✓ Recent downloads for {result['count']} artists (sorted by newest):\n\n"
+                for artist_data in result['artists']:
+                    response_text += f"• {artist_data['artist']} ({artist_data['total_tracks']} total tracks)\n"
+                    for track in artist_data['recent_tracks']:
+                        modified = track.get('modified', '')[:10] if track.get('modified') else 'Unknown'
+                        response_text += f"  [{modified}] {track['title']} ({track['size_mb']} MB)\n"
+                        response_text += f"  URL: {track['url']}\n"
                     response_text += "\n"
             else:
                 response_text = f"✗ Error: {result.get('error')}"
